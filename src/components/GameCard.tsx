@@ -1,7 +1,15 @@
-import { Trophy } from 'lucide-react';
+import React from 'react';
+import { Trophy, Sparkles } from 'lucide-react';
 import { Game, Team } from '../services/mlbApi';
+import Markdown from 'react-markdown';
 
-export function GameCard({ game }: { game: Game }) {
+interface GameCardProps {
+  game: Game;
+  loading?: boolean;
+  summary?: string;
+}
+
+export const GameCard: React.FC<GameCardProps> = ({ game, loading, summary }) => {
   const isLive = game.status.abstractGameState === 'Live';
   const isFinal = game.status.abstractGameState === 'Final';
   
@@ -18,10 +26,32 @@ export function GameCard({ game }: { game: Game }) {
         )}
       </div>
       
-      <div className="space-y-3">
+      <div className="space-y-3 mb-4">
         <TeamRow team={game.teams.away} isWinner={isFinal && game.teams.away.isWinner} />
         <TeamRow team={game.teams.home} isWinner={isFinal && game.teams.home.isWinner} />
       </div>
+
+      {(isLive || isFinal) && (
+        <div className="mt-4 pt-4 border-t border-gray-100">
+          <div className="flex items-center gap-2 mb-1 text-blue-700">
+            <Sparkles className="w-4 h-4" />
+            <span className="text-xs font-bold uppercase tracking-tight">Game Summary</span>
+          </div>
+          
+          <div className="bg-blue-50/50 rounded-lg p-3 border border-blue-100">
+            {summary ? (
+              <div className="prose prose-sm max-w-none text-gray-700 text-sm leading-relaxed whitespace-pre-line">
+                <Markdown>{summary}</Markdown>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-gray-500 italic">
+                <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                Generating AI summary...
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,32 +1,180 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 import { Game } from './mlbApi';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-export async function generateGameSummary(games: Game[]): Promise<string> {
+export interface GameSummary {
+  gamePk: number;
+  summary: string;
+}
+
+export interface AllSummaries {
+  dailyOverview: string;
+  gameSummaries: GameSummary[];
+}
+
+export async function generateAllSummaries(games: Game[]): Promise<AllSummaries> {
   const activeGames = games.filter(g => g.status.abstractGameState === 'Live' || g.status.abstractGameState === 'Final');
   
   if (activeGames.length === 0) {
-    return "There are no completed or in-progress games to summarize right now.";
+    return {
+      dailyOverview: "There are no completed or in-progress games to summarize right now.",
+      gameSummaries: []
+    };
   }
 
-  const promptData = activeGames.map(g => ({
-    status: g.status.detailedState,
-    away: `${g.teams.away.team.name} (${g.teams.away.score ?? 0})`,
-    home: `${g.teams.home.team.name} (${g.teams.home.score ?? 0})`,
-    inning: g.linescore?.currentInningOrdinal ? `${g.linescore.inningHalf} ${g.linescore.currentInningOrdinal}` : ''
-  }));
+  const promptData = activeGames.map(g => {
+    const getImpactHitters = () => {
+      const hitters: any[] = [];
+      const processTeam = (side: 'away' | 'home') => {
+        const teamObj = g.teams[side];
+        const boxscore = teamObj.team?.boxscore || g.boxscore?.teams?.[side];
+        if (!boxscore?.players) return;
+        Object.values(boxscore.players).forEach((p: any) => {
+          const stats = p.stats?.batting;
+          if (stats && (stats.hits > 0 || stats.rbi > 0)) {
+            hitters.push({ name: p.person?.fullName, stats, team: teamObj.team.name });
+          }
+        });
+      };
+      processTeam('away');
+      processTeam('home');
+      return hitters.sort((a, b) => (b.stats.homeRuns * 4 + b.stats.rbi * 2 + b.stats.hits) - (a.stats.homeRuns * 4 + a.stats.rbi * 2 + a.stats.hits)).slice(0, 5);
+    };
+
+    const getPitchers = () => {
+      const pitchers: any[] = [];
+      const processTeam = (side: 'away' | 'home') => {
+        const teamObj = g.teams[side];
+        const boxscore = teamObj.team?.boxscore || g.boxscore?.teams?.[side];
+        if (!boxscore?.players) return;
+        Object.values(boxscore.players).forEach((p: any) => {
+          const stats = p.stats?.pitching;
+          if (stats && stats.inningsPitched) {
+            pitchers.push({ 
+              name: p.person?.fullName, 
+              stats, 
+              seasonStats: p.seasonStats?.pitching,
+              team: teamObj.team.name 
+            });
+          }
+        });
+      };
+      processTeam('away');
+      processTeam('home');
+      return pitchers.sort((a, b) => parseFloat(b.stats.inningsPitched) - parseFloat(a.stats.inningsPitched)).slice(0, 5);
+    };
+
+    const getDecisionStats = () => {
+      if (!g.decisions) return null;
+      const findStats = (id?: number) => {
+        if (!id) return null;
+        const player = [...Object.values(g.teams.away.team?.boxscore?.players || {}), 
+                        ...Object.values(g.teams.home.team?.boxscore?.players || {}),
+                        ...Object.values(g.boxscore?.teams?.away?.players || {}),
+                        ...Object.values(g.boxscore?.teams?.home?.players || {})]
+                        .find((p: any) => p.person?.id === id);
+        return player?.seasonStats?.pitching;
+      };
+
+      return {
+        winner: g.decisions.winner ? { ...g.decisions.winner, stats: findStats(g.decisions.winner.id) } : null,
+        loser: g.decisions.loser ? { ...g.decisions.loser, stats: findStats(g.decisions.loser.id) } : null,
+        save: g.decisions.save ? { ...g.decisions.save, stats: findStats(g.decisions.save.id) } : null,
+      };
+    };
+
+    return {
+      id: g.gamePk,
+      status: g.status.detailedState,
+      abstractStatus: g.status.abstractGameState,
+      away: { name: g.teams.away.team.name, score: g.teams.away.score ?? 0 },
+      home: { name: g.teams.home.team.name, score: g.teams.home.score ?? 0 },
+      inning: g.linescore?.currentInningOrdinal ? `${g.linescore.inningHalf} ${g.linescore.currentInningOrdinal}` : '',
+      venue: (g as any).venue?.name || 'the stadium',
+      decisionDetails: getDecisionStats(),
+      topHitters: getImpactHitters(),
+      topPitchers: getPitchers()
+    };
+  });
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-lite-preview',
-      contents: `You are a sports broadcaster. Here is the current MLB scoreboard data for today: ${JSON.stringify(promptData)}. 
-      Write a quick, engaging 2-3 sentence summary of the action. Focus on completed and in-progress games. 
-      Mention any blowouts, close games, or interesting situations. Keep it concise and mobile-friendly.`,
+      model: 'gemini-3-flash-preview',
+      contents: `You are Peter Gammons. Analyze today's MLB action: ${JSON.stringify(promptData)}.
+      
+      For each game, provide a detailed summary following this EXACT format:
+      (vs. [Opponent Name])
+
+      🔥 Key Highlights
+      Dominant pitching:
+      - [Pitcher Name]: [IP] IP, [K] K
+      - [Pitcher Name]: [IP] IP, [K] K
+      
+      Big bats wake up:
+      - [Hitter Name]: [Stats: H-AB, HR, RBI]
+      
+      Bullpen locks it down:
+      - [Reliever Name]: [Stats]
+
+      [If game is Final, add this section]
+      Decisions:
+      - W: [Winner Name] ([Wins]-[Losses])
+      - L: [Loser Name] ([Wins]-[Losses])
+      - SV: [Save Name] ([Saves])
+
+      📊 What it means: [Context/Stat]
+
+      Rules:
+      1. DO NOT include a "Quick summary" section.
+      2. List at least 2 pitchers with their IP and K for the game.
+      3. If the game is Final, you MUST include the Decisions section with season records (W-L or Saves).
+      4. Use the provided seasonStats for the records.
+
+      Provide your analysis in JSON format with the following structure:
+      {
+        "dailyOverview": "A 3-4 sentence poetic summary of the overall day.",
+        "gameSummaries": [
+          { "gamePk": 12345, "summary": "Full formatted summary string here" }
+        ]
+      }
+      
+      Maintain your signature Gammons style: analytical, reverent, and precise.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            dailyOverview: { type: Type.STRING },
+            gameSummaries: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  gamePk: { type: Type.NUMBER },
+                  summary: { type: Type.STRING }
+                },
+                required: ["gamePk", "summary"]
+              }
+            }
+          },
+          required: ["dailyOverview", "gameSummaries"]
+        }
+      }
     });
-    return response.text || "Summary unavailable.";
+
+    const result = JSON.parse(response.text || '{}');
+
+    return {
+      dailyOverview: result.dailyOverview || "Summary unavailable.",
+      gameSummaries: result.gameSummaries || []
+    };
   } catch (e) {
     console.error("Gemini error:", e);
-    return "Could not generate AI summary at this time.";
+    return {
+      dailyOverview: "Could not generate AI summaries at this time.",
+      gameSummaries: []
+    };
   }
 }
+
