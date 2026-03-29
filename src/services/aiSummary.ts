@@ -9,7 +9,6 @@ export interface GameSummary {
 }
 
 export interface AllSummaries {
-  dailyOverview: string;
   gameSummaries: GameSummary[];
 }
 
@@ -18,7 +17,6 @@ export async function generateAllSummaries(games: Game[]): Promise<AllSummaries>
   
   if (activeGames.length === 0) {
     return {
-      dailyOverview: "There are no completed or in-progress games to summarize right now.",
       gameSummaries: []
     };
   }
@@ -103,21 +101,27 @@ export async function generateAllSummaries(games: Game[]): Promise<AllSummaries>
       model: 'gemini-3-flash-preview',
       contents: `You are Peter Gammons. Analyze today's MLB action: ${JSON.stringify(promptData)}.
       
-      For each game, provide a detailed summary following this EXACT format:
+      For each game, provide a summary based on its status:
+      
+      1. If the game is "Live" (abstractStatus: "Live"):
+         Provide just a few sentences on the current game stats and key performances so far.
+         
+      2. If the game is "Final" (abstractStatus: "Final"):
+         Provide a full game summary and list the impact players.
+         
+      Use ONLY the current game stats provided in the data.
+      
+      Format for each game summary:
       (vs. [Opponent Name])
 
       🔥 Key Highlights
       Dominant pitching:
       - [Pitcher Name]: [IP] IP, [K] K
-      - [Pitcher Name]: [IP] IP, [K] K
       
       Big bats wake up:
       - [Hitter Name]: [Stats: H-AB, HR, RBI]
       
-      Bullpen locks it down:
-      - [Reliever Name]: [Stats]
-
-      [If game is Final, add this section]
+      [If game is Final, add Decisions section]
       Decisions:
       - W: [Winner Name] ([Wins]-[Losses])
       - L: [Loser Name] ([Wins]-[Losses])
@@ -125,15 +129,8 @@ export async function generateAllSummaries(games: Game[]): Promise<AllSummaries>
 
       📊 What it means: [Context/Stat]
 
-      Rules:
-      1. DO NOT include a "Quick summary" section.
-      2. List at least 2 pitchers with their IP and K for the game.
-      3. If the game is Final, you MUST include the Decisions section with season records (W-L or Saves).
-      4. Use the provided seasonStats for the records.
-
       Provide your analysis in JSON format with the following structure:
       {
-        "dailyOverview": "A 3-4 sentence poetic summary of the overall day.",
         "gameSummaries": [
           { "gamePk": 12345, "summary": "Full formatted summary string here" }
         ]
@@ -145,7 +142,6 @@ export async function generateAllSummaries(games: Game[]): Promise<AllSummaries>
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            dailyOverview: { type: Type.STRING },
             gameSummaries: {
               type: Type.ARRAY,
               items: {
@@ -158,7 +154,7 @@ export async function generateAllSummaries(games: Game[]): Promise<AllSummaries>
               }
             }
           },
-          required: ["dailyOverview", "gameSummaries"]
+          required: ["gameSummaries"]
         }
       }
     });
@@ -166,13 +162,11 @@ export async function generateAllSummaries(games: Game[]): Promise<AllSummaries>
     const result = JSON.parse(response.text || '{}');
 
     return {
-      dailyOverview: result.dailyOverview || "Summary unavailable.",
       gameSummaries: result.gameSummaries || []
     };
   } catch (e) {
     console.error("Gemini error:", e);
     return {
-      dailyOverview: "Could not generate AI summaries at this time.",
       gameSummaries: []
     };
   }

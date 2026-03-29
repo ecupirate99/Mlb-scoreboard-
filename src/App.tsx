@@ -6,7 +6,6 @@ import { GameCard } from './components/GameCard';
 
 export default function App() {
   const [games, setGames] = useState<Game[]>([]);
-  const [dailyOverview, setDailyOverview] = useState<string>('');
   const [gameSummaries, setGameSummaries] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -14,7 +13,6 @@ export default function App() {
   const loadData = async () => {
     setLoading(true);
     setError(null);
-    setDailyOverview('');
     setGameSummaries({});
     try {
       const gamesData = await fetchTodayGames();
@@ -28,16 +26,12 @@ export default function App() {
 
       if (activeGames.length > 0) {
         try {
-          const { dailyOverview, gameSummaries: summaries } = await generateAllSummaries(activeGames);
-          setDailyOverview(dailyOverview);
+          const { gameSummaries: summaries } = await generateAllSummaries(activeGames);
           const summaryMap = summaries.reduce((acc, s) => ({ ...acc, [s.gamePk]: s.summary }), {});
           setGameSummaries(summaryMap);
         } catch (aiErr) {
           console.error('AI Summary failed:', aiErr);
-          setDailyOverview("The AI summary is currently unavailable, but you can still view the game data below.");
         }
-      } else {
-        setDailyOverview("No completed or in-progress games today.");
       }
     } catch (err) {
       console.error('App loadData error:', err);
@@ -72,29 +66,6 @@ export default function App() {
       </header>
 
       <main className="max-w-md mx-auto p-4 space-y-6">
-        {/* Daily Overview Section */}
-        <section className="bg-white rounded-2xl shadow-sm border border-blue-100 p-5 relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
-          <div className="flex items-center gap-2 mb-3 text-blue-700">
-            <Sparkles className="w-5 h-5" />
-            <h2 className="font-semibold text-sm uppercase tracking-wider">Daily Overview</h2>
-          </div>
-          
-          {loading ? (
-            <div className="animate-pulse space-y-2">
-              <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-              <div className="h-4 bg-gray-200 rounded w-full"></div>
-              <div className="h-4 bg-gray-200 rounded w-5/6"></div>
-            </div>
-          ) : error ? (
-            <p className="text-red-500 text-sm">{error}</p>
-          ) : (
-            <p className="text-gray-700 leading-relaxed text-sm">
-              {dailyOverview || "Press refresh to load the latest summary."}
-            </p>
-          )}
-        </section>
-
         {/* Games List */}
         <section>
           <h2 className="font-bold text-lg mb-4 text-gray-800">Today's Games</h2>
