@@ -105,9 +105,11 @@ export async function generateAllSummaries(games: Game[]): Promise<AllSummaries>
       
       1. If the game is "Live" (abstractStatus: "Live"):
          Provide just a few sentences on the current game stats and key performances so far.
+         **Crucial: Explicitly call out player names that are contributing to the score (RBIs, runs scored, or key hits that led to runs).**
          
       2. If the game is "Final" (abstractStatus: "Final"):
          Provide a full game summary and list the impact players.
+         **Crucial: Explicitly call out player names that were responsible for the scoring (who drove in the runs and how).**
          
       Use ONLY the current game stats provided in the data.
       
@@ -119,7 +121,7 @@ export async function generateAllSummaries(games: Game[]): Promise<AllSummaries>
       - [Pitcher Name]: [IP] IP, [K] K
       
       Big bats wake up:
-      - [Hitter Name]: [Stats: H-AB, HR, RBI]
+      - [Hitter Name]: [Stats: H-AB, HR, RBI] (Mention their specific contribution to the score)
       
       [If game is Final, add Decisions section]
       Decisions:
