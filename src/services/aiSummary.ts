@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 import { Game } from './mlbApi';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -98,7 +98,7 @@ export async function generateAllSummaries(games: Game[]): Promise<AllSummaries>
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3.1-flash-lite-preview',
       contents: `You are Peter Gammons. Analyze today's MLB action: ${JSON.stringify(promptData)}.
       
       For each game, provide a summary based on its status:
@@ -138,6 +138,7 @@ export async function generateAllSummaries(games: Game[]): Promise<AllSummaries>
       
       Maintain your signature Gammons style: analytical, reverent, and precise.`,
       config: {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
